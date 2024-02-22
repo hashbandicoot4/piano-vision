@@ -37,64 +37,124 @@ class HandFinder:
 	def find_fingertips(self, hand_contours, display_frame):
 		display_frame = display_frame.copy()
 		hands = []
-		convexity_defects = []
 
 		for contour in hand_contours:
-			convex_pts = cv2.convexHull(contour)
+			if contour is None or len(contour) < 3:
+				print("Invalid contour.")
+				continue  # Skip this iteration
+
+			convex_hull_indices = cv2.convexHull(contour, returnPoints=False)
+			if convex_hull_indices is None or len(convex_hull_indices) < 3:
+				print("Invalid convex hull.")
+				continue  # Skip this iteration
+
+			convex_pts = cv2.convexHull(contour, returnPoints=True)
 			group_averages = np.array(avg_of_groups(group(convex_pts, self.MAX_DIST)))
 
-			# TODO remove me once no longer need debug
-			last_pt = None
-			for item in group_averages:
-				pt = (item[0][0], item[0][1])
-				cv2.circle(display_frame, (pt[0], pt[1]), 3, color=(255, 0, 0), thickness=cv2.FILLED)
-				if last_pt is not None:
-					cv2.line(display_frame, (pt[0], pt[1]), (last_pt[0], last_pt[1]), color=(255, 0, 0), thickness=1)
-				last_pt = pt
-			cv2.line(display_frame,
-				(group_averages[0][0][0], group_averages[0][0][1]),
-				(group_averages[-1][0][0], group_averages[-1][0][1]),
-				color=(255, 0, 0), thickness=1
-			)
-			# END REMOVE ME
+			# print("Contour shape and type:", contour.shape, contour.dtype)
+			# print("Convex hull indices shape and type:", convex_hull_indices.shape, convex_hull_indices.dtype)
 
-			closest_convex_pts = np.array(index_of_closest(contour, group_averages))
-			defects = cv2.convexityDefects(contour, closest_convex_pts)
+			defects = cv2.convexityDefects(contour, convex_hull_indices)
 			if defects is None:
-				defects = []
-			convexity_defects.append(defects)
+				print("No defects found.")
+				continue  # Skip this iteration
 
-		cv2.imshow('convex_hand', display_frame)
-
-		for i, hand_defects in enumerate(convexity_defects):
-			contour = hand_contours[i]
-			centre = centre_of_contour(contour)
-			fingertips = []
-			for j, defects in enumerate(hand_defects):
-				s = defects[0][0]
-				e = defects[0][1]
-				f = defects[0][2]
-				d = defects[0][3]
-
-				start = tuple(contour[s][0])
-				end = tuple(contour[e][0])
-				far = tuple(contour[f][0])
-
-				a = dist([start], [end])
-				b = dist([far], [start])
-				c = dist([far], [end])
-
-				angle_deg = np.degrees(np.arccos((b ** 2 + c ** 2 - a ** 2) / (2 * b * c)))
-
-				if angle_deg < self.ANGLE_MAX:
-					if start not in fingertips and start[1] < centre[1]:
-						fingertips.append(start)
-					if end not in fingertips and start[1] < centre[1]:
-						fingertips.append(end)
-
+			fingertips = self.calculate_fingertips(contour, defects)
 			hands.append(fingertips)
 
 		return hands
+
+
+	def calculate_fingertips(self, contour, defects):
+		fingertips = []
+		centre = centre_of_contour(contour)
+		for i in range(defects.shape[0]):
+			s, e, f, d = defects[i, 0]
+			start = tuple(contour[s][0])
+			end = tuple(contour[e][0])
+			far = tuple(contour[f][0])
+
+			# Use points directly if they are (x, y)
+			a = dist(start, end)
+			b = dist(far, start)
+			c = dist(far, end)
+
+			angle_deg = np.degrees(np.arccos((b ** 2 + c ** 2 - a ** 2) / (2 * b * c)))
+
+			if angle_deg < self.ANGLE_MAX:
+				if start not in fingertips and start[1] < centre[1]:
+					fingertips.append(start)
+				if end not in fingertips and end[1] < centre[1]:
+					fingertips.append(end)
+
+		return fingertips
+
+
+
+	# def find_fingertips(self, hand_contours, display_frame):
+	# 	display_frame = display_frame.copy()
+	# 	hands = []
+	# 	convexity_defects = []
+
+	# 	for contour in hand_contours:
+	# 		if contour is None or len(contour) < 3:
+	# 			print("Invalid contour.")
+	# 			continue
+	# 		convex_pts = cv2.convexHull(contour, returnPoints=False)
+	# 		group_averages = np.array(avg_of_groups(group(convex_pts, self.MAX_DIST)))
+
+	# 		# TODO remove me once no longer need debug
+	# 		last_pt = None
+	# 		for item in group_averages:
+	# 			pt = (item[0][0], item[0][1])
+	# 			cv2.circle(display_frame, (pt[0], pt[1]), 3, color=(255, 0, 0), thickness=cv2.FILLED)
+	# 			if last_pt is not None:
+	# 				cv2.line(display_frame, (pt[0], pt[1]), (last_pt[0], last_pt[1]), color=(255, 0, 0), thickness=1)
+	# 			last_pt = pt
+	# 		cv2.line(display_frame,
+	# 			(group_averages[0][0][0], group_averages[0][0][1]),
+	# 			(group_averages[-1][0][0], group_averages[-1][0][1]),
+	# 			color=(255, 0, 0), thickness=1
+	# 		)
+	# 		# END REMOVE ME
+
+	# 		closest_convex_pts = np.array(index_of_closest(contour, group_averages))
+	# 		defects = cv2.convexityDefects(contour, closest_convex_pts)
+	# 		if defects is None:
+	# 			defects = []
+	# 		convexity_defects.append(defects)
+
+	# 	cv2.imshow('convex_hand', display_frame)
+
+	# 	for i, hand_defects in enumerate(convexity_defects):
+	# 		contour = hand_contours[i]
+	# 		centre = centre_of_contour(contour)
+	# 		fingertips = []
+	# 		for j, defects in enumerate(hand_defects):
+	# 			s = defects[0][0]
+	# 			e = defects[0][1]
+	# 			f = defects[0][2]
+	# 			d = defects[0][3]
+
+	# 			start = tuple(contour[s][0])
+	# 			end = tuple(contour[e][0])
+	# 			far = tuple(contour[f][0])
+
+	# 			a = dist([start], [end])
+	# 			b = dist([far], [start])
+	# 			c = dist([far], [end])
+
+	# 			angle_deg = np.degrees(np.arccos((b ** 2 + c ** 2 - a ** 2) / (2 * b * c)))
+
+	# 			if angle_deg < self.ANGLE_MAX:
+	# 				if start not in fingertips and start[1] < centre[1]:
+	# 					fingertips.append(start)
+	# 				if end not in fingertips and start[1] < centre[1]:
+	# 					fingertips.append(end)
+
+	# 		hands.append(fingertips)
+
+	# 	return hands
 
 	def process_frame(self, frame):
 		# cv2.drawContours(frame, largest_contours, -1, (255, 0, 255), thickness=cv2.FILLED)

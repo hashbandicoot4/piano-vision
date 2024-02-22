@@ -8,11 +8,13 @@ class Note(Enum):
 	A = 0
 	A_SHARP = 0.5
 	B = 1
+	BC = 1.5
 	C = 2
 	C_SHARP = 2.5
 	D = 3
 	D_SHARP = 3.5
 	E = 4
+	EF = 4.5
 	F = 5
 	F_SHARP = 5.5
 	G = 6
@@ -45,16 +47,17 @@ class KeysManager:
 	def __init__(self, ref_frame):
 		self.ref_frame = ref_frame
 
-		# Get black key contours
+		# Black key contours
 		thresh = self.threshold(ref_frame)
 		# cv2.imshow('black_keys_thresholded', thresh)
 		key_contours = self.find_key_contours(thresh)
 
 		display_frame = self.ref_frame.copy()
 		cv2.drawContours(display_frame, key_contours, -1, (255, 0, 255), thickness=1)
-		# cv2.imshow('black_keys_contours', display_frame)
+		cv2.imshow('black_keys_contours', display_frame)
+		cv2.waitKey(0)
 
-		# Get a bounding rectangle for each black key
+		# Bounding rectangle for each black key
 		self.black_keys = list(map(lambda c: Key(*cv2.boundingRect(c)), key_contours))
 		self.white_keys = list(map(lambda r: Key(*r), self.find_white_keys(self.ref_frame)))
 
@@ -62,18 +65,20 @@ class KeysManager:
 
 	def threshold(self, frame):
 		grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-		blur = cv2.GaussianBlur(grey, (3, 3), 0)
+		# Change the gaussian blur
+		blur = cv2.GaussianBlur(grey, (9, 9), 0)
+		# Block size (maintain detail)
 		thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 99, 40)
 		return thresh
 
 	def find_key_contours(self, thresholded):
-		# Don't check for keys in the bottom quarter of the image
+		# Do not check keys in bottom quarter of the image
 		h, w = thresholded.shape
 		mask = np.zeros((h, w, 1), np.uint8)
 		cv2.rectangle(mask, (0, 0), (w, h - round(h / 4)), color=255, thickness=cv2.FILLED)
 		masked = apply_mask(thresholded, mask)
 
-		# Discard contours that are more than 2 standard deviations below the mean
+		# Remove contours more than 2 standard deviations below mean
 		contours, hierarchy = cv2.findContours(masked, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 		mean, std_dev = mean_and_standard_dev(contours, key=cv2.contourArea)
 		contours = tuple(filter(lambda c: cv2.contourArea(c) > (mean - 2 * std_dev), contours))
@@ -84,7 +89,7 @@ class KeysManager:
 		height = frame.shape[0]
 		cropped = frame[height - round(height / 3.5):height - round(height / 16)].copy()
 		cropped = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-		cropped = cv2.Canny(cropped, 10, 30)
+		cropped = cv2.Canny(cropped, 40, 100)
 		# cv2.imshow('white_key_edges_pre', cropped)
 
 		for row in cropped:

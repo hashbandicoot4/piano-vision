@@ -7,6 +7,9 @@ class VideoReader:
 
 	def __enter__(self):
 		self.video = cv2.VideoCapture(self.video_file)
+		if not self.video.isOpened():
+			print(f"Failed to open video file: {self.video_file}")
+			return None
 		return self
 
 	def __exit__(self, exc_type, exc_val, exc_tb):

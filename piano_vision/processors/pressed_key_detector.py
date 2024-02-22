@@ -15,49 +15,81 @@ class PressedKeyDetector:
 		self.to_be_added = dict()
 		self.to_be_removed = dict()
 
+# With key presses
+	# def detect_pressed_keys(self, frame, skin_mask, fingertips=None):
+	# 	frame = frame.copy()
+	# 	# Dilate again to ensure that we don't include any small bits of skin
+	# 	kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+	# 	dilated_mask = cv2.dilate(skin_mask, kernel, iterations=1)
+
+	# 	skin = apply_mask(frame, dilated_mask)
+	# 	frame = cv2.subtract(frame, skin)
+	# 	# cv2.imshow('skin_masked_out', frame)
+
+	# 	skin_ref = apply_mask(self.ref_frame, dilated_mask)
+	# 	ref = cv2.subtract(self.ref_frame, skin_ref)
+
+	# 	diff = self.get_diff(frame, ref)
+
+	# 	contours, hierarchy = cv2.findContours(diff, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+	# 	contours = tuple(filter(lambda c: cv2.contourArea(c) > self.MIN_CONTOUR_AREA, contours))
+	# 	cv2.drawContours(frame, contours, -1, color=(0, 255, 0), thickness=cv2.FILLED)
+
+	# 	centres = tuple(map(centre_of_contour, contours))
+
+	# 	for centre in centres:
+	# 		cv2.circle(frame, (centre[0], centre[1]), radius=5, color=(0, 0, 255), thickness=cv2.FILLED)
+	# 	cv2.imshow('frame_with_diff', frame)
+
+	# 	pressed_keys = set()
+	# 	for centre in centres:
+	# 		for key in [*self.keys_manager.white_keys, *self.keys_manager.black_keys]:
+	# 			if key.x < centre[0] < key.x + key.width and key.y < centre[1] < key.y + key.height:
+	# 				pressed_keys.add(key)
+
+	# 	if fingertips:
+	# 		pressed_keys = tuple(filter(
+	# 			# Filter pressed keys to only those which contain a fingertip
+	# 			lambda k: any(map(lambda f: self.fingertip_within_key(f, k), fingertips)),
+	# 			pressed_keys
+	# 		))
+
+	# 	self.process_sticky_pressed_changes(pressed_keys)
+	# 	return self.currently_pressed
+
+# Candidate keys based on fingertip positions
 	def detect_pressed_keys(self, frame, skin_mask, fingertips=None):
 		frame = frame.copy()
-		# Dilate again to ensure that we don't include any small bits of skin
 		kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 		dilated_mask = cv2.dilate(skin_mask, kernel, iterations=1)
-
 		skin = apply_mask(frame, dilated_mask)
 		frame = cv2.subtract(frame, skin)
-		# cv2.imshow('skin_masked_out', frame)
-
 		skin_ref = apply_mask(self.ref_frame, dilated_mask)
 		ref = cv2.subtract(self.ref_frame, skin_ref)
-
 		diff = self.get_diff(frame, ref)
 
 		contours, hierarchy = cv2.findContours(diff, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 		contours = tuple(filter(lambda c: cv2.contourArea(c) > self.MIN_CONTOUR_AREA, contours))
-		cv2.drawContours(frame, contours, -1, color=(0, 255, 0), thickness=cv2.FILLED)
 
-		centres = tuple(map(centre_of_contour, contours))
-
-		for centre in centres:
-			cv2.circle(frame, (centre[0], centre[1]), radius=5, color=(0, 0, 255), thickness=cv2.FILLED)
-		cv2.imshow('frame_with_diff', frame)
-
-		pressed_keys = set()
-		for centre in centres:
-			for key in [*self.keys_manager.white_keys, *self.keys_manager.black_keys]:
-				if key.x < centre[0] < key.x + key.width and key.y < centre[1] < key.y + key.height:
-					pressed_keys.add(key)
-
+		# Detect keys isntead based on fingertips' positions
 		if fingertips:
-			pressed_keys = tuple(filter(
-				# Filter pressed keys to only those which contain a fingertip
-				lambda k: any(map(lambda f: self.fingertip_within_key(f, k), fingertips)),
-				pressed_keys
-			))
+			pressed_keys = set()
+			for fingertip in fingertips:
+				for key in [*self.keys_manager.white_keys, *self.keys_manager.black_keys]:
+					if self.fingertip_within_key(fingertip, key):
+						pressed_keys.add(key)
+			self.process_sticky_pressed_changes(pressed_keys)
+		else:
+			# Use the original method if this does not work correctly
+			pressed_keys = set([key for centre in tuple(map(centre_of_contour, contours))
+								for key in [*self.keys_manager.white_keys, *self.keys_manager.black_keys]
+								if key.x < centre[0] < key.x + key.width and key.y < centre[1] < key.y + key.height])
+			self.process_sticky_pressed_changes(pressed_keys)
 
-		self.process_sticky_pressed_changes(pressed_keys)
 		return self.currently_pressed
 
 	def process_sticky_pressed_changes(self, pressed_keys):
-		# If a key was going to be added but is no longer pressed, remove from to_be_added
+		# Key identified but is no longer pressed, remove from to_be_added
 		delete_after = []
 		for key in self.to_be_added:
 			if key not in pressed_keys:
@@ -66,18 +98,18 @@ class PressedKeyDetector:
 			del self.to_be_added[key]
 
 		for key in pressed_keys:
-			# If a key was going to be removed but is now pressed again, delete from to_be_removed
+			# Key removed but is pressed again, remove from to_be_removed
 			if key in self.to_be_removed:
 				del self.to_be_removed[key]
 			if key not in self.currently_pressed:
-				# If the key is set to be added and is still pressed, reduce its counter by 1
+				# Key added and and is still pressed, reduce counter by 1
 				if key in self.to_be_added:
 					self.to_be_added[key] -= 1
-					# Key is ready to be added
+					# Key is to be added
 					if self.to_be_added[key] == 0:
 						del self.to_be_added[key]
 						self.currently_pressed.add(key)
-				# Otherwise if we haven't seen this key before, add it in future
+				# Otherwise add it in future if not seen before
 				else:
 					self.to_be_added[key] = self.STICKINESS
 

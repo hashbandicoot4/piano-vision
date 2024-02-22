@@ -12,8 +12,16 @@ def rotate_image(image, angle):
 
 
 def apply_mask(frame, mask):
-	"""Apply binary mask to frame, return masked image."""
-	return cv2.bitwise_and(frame, frame, mask=mask)
+    # Ensure mask is of the correct type
+    if mask.dtype != np.uint8:
+        mask = cv2.convertScaleAbs(mask)
+    
+    # Ensure mask and frame have the same size
+    if mask.shape[:2] != frame.shape[:2]:
+        raise ValueError("The mask and frame must have the same size.")
+    
+    # Apply mask
+    return cv2.bitwise_and(frame, frame, mask=mask)
 
 
 def mean_and_standard_dev(values, key=None):
@@ -23,15 +31,31 @@ def mean_and_standard_dev(values, key=None):
 	return np.mean(values), np.std(values)
 
 
+# def dist(p1, p2):
+#     try:
+#         dx = p1[0][0] - p2[0][0]
+#         dy = p1[0][1] - p2[0][1]
+#         return np.sqrt(dx ** 2 + dy ** 2)
+#     except IndexError as e:
+#         print(f"Error in dist function with p1: {p1}, p2: {p2}")
+#         raise e
+
 def dist(p1, p2):
-	"""Calculates the Euclidean distance between two 2D points"""
-	dx = p1[0][0] - p2[0][0]
-	dy = p1[0][1] - p2[0][1]
-	return np.sqrt(dx ** 2 + dy ** 2)
+    try:
+        if isinstance(p1[0], (list, np.ndarray)) and isinstance(p2[0], (list, np.ndarray)):
+            dx = p1[0][0] - p2[0][0]
+            dy = p1[0][1] - p2[0][1]
+        else:
+            dx = p1[0] - p2[0]
+            dy = p1[1] - p2[1]
+        return np.sqrt(dx ** 2 + dy ** 2)
+    except IndexError as e:
+        print(f"Error in dist function with p1: {p1}, p2: {p2}")
+        raise e
+
 
 
 def group(data, radius, dist_func=dist):
-	"""Clusters data that fall within radius of each by measure of dist_func"""
 	clustered = [[data[0]]]
 	for val in data[1:]:
 		if dist_func(val, clustered[-1][0]) < radius:
@@ -43,8 +67,6 @@ def group(data, radius, dist_func=dist):
 
 
 def avg_of_groups(point_groups):
-	"""Given a list of groups of 2D points, returns a list with the averages
-	of each group in the same order"""
 	point_avgs = []
 
 	for group in point_groups:
@@ -63,8 +85,6 @@ def avg_of_groups(point_groups):
 
 
 def index_of_closest(data, points, dist_func=dist):
-	"""Generates an index of the closest values in data to values in points by
-	measure of dist_func"""
 	ioc = []
 
 	for point in points:
